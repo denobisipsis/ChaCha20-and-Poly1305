@@ -106,7 +106,7 @@ class AEAD_CHACHA20_POLY1305
 
 	public function inner_block($tate)
 		{
-		/** 
+		/* 
 		 ChaCha20 runs 20 rounds, alternating between "column rounds" and
 		   "diagonal rounds".  Each round consists of four quarter-rounds, and
 		   they are run as follows.  Quarter rounds 1-4 are part of a "column"
@@ -124,7 +124,7 @@ class AEAD_CHACHA20_POLY1305
 
       public function chacha20_block($key, $counter, $nonce)
       		{
-		/** 
+		/*
 		The inputs to ChaCha20 are:
 				
 		o  A 256-bit key, treated as a concatenation of eight 32-bit little-
@@ -178,7 +178,7 @@ class AEAD_CHACHA20_POLY1305
 
 	public function chacha20_encrypt($key, $counter, $nonce, $plaintext)
 		{
-		 /** So if the provided nonce is only 64-bit, then the first 32
+		 /* So if the provided nonce is only 64-bit, then the first 32
 		       bits of the nonce will be set to a constant number.  This will
 		       usually be zero, but for protocols with multiple senders it may be
 		       different for each sender, but SHOULD be the same for all
