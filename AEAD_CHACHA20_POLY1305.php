@@ -111,7 +111,8 @@ class AEAD_CHACHA20_POLY1305
 		 ChaCha20 runs 20 rounds, alternating between "column rounds" and
 		   "diagonal rounds".  Each round consists of four quarter-rounds, and
 		   they are run as follows.  Quarter rounds 1-4 are part of a "column"
-		   round, while 5-8 are part of a "diagonal" round: */
+		   round, while 5-8 are part of a "diagonal" round: 
+		   */
 		
 		$this->Quarter_Round(0, 4, 8, 12);
 		$this->Quarter_Round(1, 5, 9, 13);
