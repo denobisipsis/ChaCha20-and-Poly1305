@@ -185,7 +185,8 @@ class AEAD_CHACHA20_POLY1305
 		       usually be zero, but for protocols with multiple senders it may be
 		       different for each sender, but SHOULD be the same for all
 		       invocations of the function with the same key by a particular
-		       sender.*/
+		       sender.
+		       */
 		       
 		if (strlen($nonce)==16) 
 			$nonce=str_repeat("0",8).$nonce;
@@ -226,10 +227,8 @@ class AEAD_CHACHA20_POLY1305
 		$mac_data  .= $this->pad16($ciphertext);
 		$mac_data  .= pack("P",strlen($aad));
 		$mac_data  .= pack("P",strlen($ciphertext));
- 
-		$tag 	    = $this->poly($otk, "", $mac_data);
 		
-		return bin2hex($ciphertext).$tag;
+		return bin2hex($ciphertext).$this->poly($otk, "", $mac_data);
 	 	}
 
       public function chacha20_aead_decrypt($aad, $key, $iv, $constant, $ciphertext)
@@ -247,14 +246,11 @@ class AEAD_CHACHA20_POLY1305
 		$mac_data  .= $this->pad16($ciphertext);
 		$mac_data  .= pack("P",strlen($aad));
 		$mac_data  .= pack("P",strlen($ciphertext));
- 
-		$ctag 	    = $this->poly($otk, "", $mac_data);
 		
-		if ($ctag!=bin2hex($tag)) die("Authentication failed");
+		if ($this->poly($otk, "", $mac_data)!=bin2hex($tag)) 
+			die("Authentication failed");
 		
-		$plaintext  = $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
-		
-		return $plaintext;
+		return $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
 	 	}
 	
 	/** POLY1305 FUNCTIONS */
