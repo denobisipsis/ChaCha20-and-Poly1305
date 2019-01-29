@@ -72,41 +72,42 @@ class AEAD_CHACHA20_POLY1305
 	var $state;
 			 	
 	function Left_Roll($a, $n)
-	 	{
-	        if ($n == 0) 
-	            return $a;
-	        
+		{
 	        $lp = ($a << $n)        & 0xffffffff;
 	        $rp = ($a >> (32 - $n)) & 0xffffffff;
-	        $m  = (1 << $n) - 1;
 	
-	        return $lp | ($rp & $m);
-	   	}
+	        return $lp | ($rp & ((1 << $n) - 1));	   	
+		}
 		   
 	public function Quarter_Round($a,$b,$c,$d)
 		{
 		/** It
 		   operates on four 32-bit unsigned integers */
 		
-		$f = $this->state[$a];
-		$g = $this->state[$b];
-		$h = $this->state[$c];
-		$i = $this->state[$d];
+		$f  = $this->state[$a];
+		$g  = $this->state[$b];
+		$h  = $this->state[$c];
+		$i  = $this->state[$d];
+				
+		$f += $g; 
+		$i  = $this->Left_Roll($i^$f,16);   
+		$h += $i; 
+		$g  = $this->Left_Roll($g^$h,12);
 		
-		$f += $g; $i ^= $f ; $i = $this->Left_Roll($i,16);   
-		$h += $i; $g ^= $h ; $g = $this->Left_Roll($g,12);
-      		$f += $g; $i ^= $f ; $i = $this->Left_Roll($i,8);
-      		$h += $i; $g ^= $h ; $g = $this->Left_Roll($g,7);
+      		$f += $g; 
+		$i  = $this->Left_Roll($i^$f,8);
+      		$h += $i; 
+		$g  = $this->Left_Roll($g^$h,7);
 		      		
 		$this->state[$a] = $f;
 		$this->state[$b] = $g;
 		$this->state[$c] = $h;
-		$this->state[$d] = $i;		
+		$this->state[$d] = $i;			      				
 		}
 
 	public function inner_block($tate)
 		{
-		/* 
+		/** 
 		 ChaCha20 runs 20 rounds, alternating between "column rounds" and
 		   "diagonal rounds".  Each round consists of four quarter-rounds, and
 		   they are run as follows.  Quarter rounds 1-4 are part of a "column"
@@ -115,7 +116,7 @@ class AEAD_CHACHA20_POLY1305
 		$this->Quarter_Round(0, 4, 8, 12);
 		$this->Quarter_Round(1, 5, 9, 13);
 		$this->Quarter_Round(2, 6, 10, 14);
-		$this->Quarter_Round(3, 7, 11, 15);
+		$this->Quarter_Round(3, 7, 11, 15);		
 		$this->Quarter_Round(0, 5, 10, 15);
 		$this->Quarter_Round(1, 6, 11, 12);
 		$this->Quarter_Round(2, 7, 8, 13);
@@ -124,7 +125,7 @@ class AEAD_CHACHA20_POLY1305
 
       public function chacha20_block($key, $counter, $nonce)
       		{
-		/*
+		/** 
 		The inputs to ChaCha20 are:
 				
 		o  A 256-bit key, treated as a concatenation of eight 32-bit little-
@@ -171,14 +172,14 @@ class AEAD_CHACHA20_POLY1305
 		 	 		 
 		 $state="";
 		 for ($k=0;$k<16;$k++) 
-		 	$state.=pack("L",$this->state[$k] + $initial_state[$k] & 0xffffffff);  
+		 	$state.=pack("L",($this->state[$k] + $initial_state[$k]) & 0xffffffff);  
 
 	         return $state;
 	         }
 
 	public function chacha20_encrypt($key, $counter, $nonce, $plaintext)
 		{
-		 /* So if the provided nonce is only 64-bit, then the first 32
+		 /** So if the provided nonce is only 64-bit, then the first 32
 		       bits of the nonce will be set to a constant number.  This will
 		       usually be zero, but for protocols with multiple senders it may be
 		       different for each sender, but SHOULD be the same for all
@@ -201,20 +202,15 @@ class AEAD_CHACHA20_POLY1305
 	        }
 
 	public function poly1305_key_gen($key,$nonce)
-		 {		       
-	         $counter = 0;
-	         $block   = substr($this->chacha20_block($key,$counter,$nonce),0,32);
-		 
+		 {		       		 		 
 		 /** block[0..15] is r_key & block[16..31] s_key */
 
-	         return $block;
+	         return substr($this->chacha20_block($key,0,$nonce),0,32);
 		 }
 
       public function pad16($x)
       		{
-	         if (strlen($x) % 16==0)
-	            	 return NULL;
-	            else return str_repeat("\0",16-(strlen($x)%16));
+	         return $x.str_repeat("\0",16-(strlen($x)%16));
          	}
 
       public function chacha20_aead_encrypt($aad, $key, $iv, $constant, $plaintext)
@@ -222,18 +218,15 @@ class AEAD_CHACHA20_POLY1305
 		$nonce      = $constant.$iv;
 		$otk        = $this->poly1305_key_gen($key, $nonce);
 		
-		$rkey	    = substr($otk,0,16);
-		$skey	    = substr($otk,16);
-		
 		$ciphertext = $this->chacha20_encrypt($key, 1, $nonce, $plaintext);
 		
 		$aad 	    = pack("H*",$aad);		
-		$mac_data   = $aad.$this->pad16($aad);
-		$mac_data  .= $ciphertext.$this->pad16($ciphertext);
+		$mac_data   = $this->pad16($aad);
+		$mac_data  .= $this->pad16($ciphertext);
 		$mac_data  .= pack("P",strlen($aad));
 		$mac_data  .= pack("P",strlen($ciphertext));
  
-		$tag 	    = $this->poly($rkey, $skey, $mac_data);
+		$tag 	    = $this->poly($otk, "", $mac_data);
 		
 		return bin2hex($ciphertext).$tag;
 	 	}
@@ -245,23 +238,20 @@ class AEAD_CHACHA20_POLY1305
 		$nonce      = $constant.$iv;
 		$otk        = $this->poly1305_key_gen($key, $nonce);
 		
-		$rkey	    = substr($otk,0,16);
-		$skey	    = substr($otk,16);
-		
 		$tag	    = substr($ciphertext,-16);
 		$ciphertext = substr($ciphertext,0,-16);
 		
-		$plaintext  = $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
-		
 		$aad 	    = pack("H*",$aad);		
-		$mac_data   = $aad.$this->pad16($aad);
-		$mac_data  .= $ciphertext.$this->pad16($ciphertext);
+		$mac_data   = $this->pad16($aad);
+		$mac_data  .= $this->pad16($ciphertext);
 		$mac_data  .= pack("P",strlen($aad));
-		$mac_data  .= pack("P",strlen($plaintext));
+		$mac_data  .= pack("P",strlen($ciphertext));
  
-		$ctag 	    = $this->poly($rkey, $skey, $mac_data);
+		$ctag 	    = $this->poly($otk, "", $mac_data);
 		
 		if ($ctag!=bin2hex($tag)) die("Authentication failed");
+		
+		$plaintext  = $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
 		
 		return $plaintext;
 	 	}
