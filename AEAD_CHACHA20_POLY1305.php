@@ -251,7 +251,7 @@ class AEAD_CHACHA20_POLY1305
 		$tag	    = substr($ciphertext,-16);
 		$ciphertext = substr($ciphertext,0,-16);
 		
-		$plaintext = $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
+		$plaintext  = $this->chacha20_encrypt($key, 1, $nonce, $ciphertext);
 		
 		$aad 	    = pack("H*",$aad);		
 		$mac_data   = $aad.$this->pad16($aad);
