@@ -3,6 +3,7 @@
 Implemented from rtf8439
 
 https://tools.ietf.org/html/rfc7539#section-2.5
+
 https://tools.ietf.org/html/rfc8439
 
 # The Poly1305-AES message-authentication code
@@ -55,7 +56,9 @@ $plaintext = $x->chacha20_aead_decrypt($aad, $Key, $Iv, '07000000', $cipher)
 # TEST VECTORS
 
 $x->test_poly1305();
+
 $x->test_Chacha();
+
 $x->test_AEAD_CHACHA20_POLY1305();
 	
 # License
