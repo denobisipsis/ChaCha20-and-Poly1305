@@ -71,7 +71,7 @@ class AEAD_CHACHA20_POLY1305
 	
 	var $state;
 			 	
-	function Left_Roll($a, $n)
+      private function Left_Roll($a, $n)
 		{
 	        $lp = ($a << $n)        & 0xffffffff;
 	        $rp = ($a >> (32 - $n)) & 0xffffffff;
@@ -79,7 +79,7 @@ class AEAD_CHACHA20_POLY1305
 	        return $lp | ($rp & ((1 << $n) - 1));	   	
 		}
 		   
-	public function Quarter_Round($a,$b,$c,$d)
+      private function Quarter_Round($a,$b,$c,$d)
 		{
 		/** It
 		   operates on four 32-bit unsigned integers */
@@ -105,7 +105,7 @@ class AEAD_CHACHA20_POLY1305
 		$this->state[$d] = $i;			      				
 		}
 
-	public function inner_block($tate)
+      private function inner_block($tate)
 		{
 		/** 
 		 ChaCha20 runs 20 rounds, alternating between "column rounds" and
@@ -124,7 +124,7 @@ class AEAD_CHACHA20_POLY1305
 		$this->Quarter_Round(3, 4, 9, 14);		
 		}
 
-      public function chacha20_block($key, $counter, $nonce)
+      private function chacha20_block($key, $counter, $nonce)
       		{
 		/** 
 		The inputs to ChaCha20 are:
@@ -178,7 +178,7 @@ class AEAD_CHACHA20_POLY1305
 	         return $state;
 	         }
 
-	public function chacha20_encrypt($key, $counter, $nonce, $plaintext)
+      public function chacha20_encrypt($key, $counter, $nonce, $plaintext)
 		{
 		 /** So if the provided nonce is only 64-bit, then the first 32
 		       bits of the nonce will be set to a constant number.  This will
@@ -203,7 +203,7 @@ class AEAD_CHACHA20_POLY1305
 	        return  $encrypted_message;
 	        }
 
-	public function poly1305_key_gen($key,$nonce)
+      private function poly1305_key_gen($key,$nonce)
 		 {		       		 		 
 		 /** block[0..15] is r_key & block[16..31] s_key */
 
