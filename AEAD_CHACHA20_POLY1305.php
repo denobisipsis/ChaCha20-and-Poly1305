@@ -200,7 +200,7 @@ class AEAD_CHACHA20_POLY1305
 			$key_stream 		= $this->chacha20_block($key, $counter+$j, $nonce);
 			$encrypted_message     .= $plaintext[$j] ^ $key_stream;
 	           	}	   
-	        return $encrypted_message;
+	        return  $encrypted_message;
 	        }
 
 	public function poly1305_key_gen($key,$nonce)
@@ -260,44 +260,58 @@ class AEAD_CHACHA20_POLY1305
 		/** Prepare rkey & skey 
 		Certain bits of r are required to be 0: 
 		r[3], r[7], r[11], r[15] are required to 
-		have their top four bits clear (i.e., to be in {0, 1, . . . , 15}), 
+		have their top four bits clear (i.e., to be in {0, 1, . . . , 15})
 		and r[4], r[8], r[12] are
 		required to have their bottom two bits clear (i.e., to be in {0, 4, 8, . . . , 252})
 		*/
-		
+
 		$key=array_values(unpack("C*",$key));
 		
-		for($k=0;$k<10;$k++) $r[$k]=0;		        	        
+		for($k=0;$k<10;$k++) $rkey[$k]=0;		        	        
 		
-		list ($rkey , $t7) = $this->poly_m($key,0,$r,array(0x1f03,0x00ff,0x1ffe,0x1f81));
+		$this->poly_m($key,$rkey,0,array(0x1f03,0x00ff,0x1ffe,0x1f81));
 		
-		$rkey[9] = ($t7 >> 5) & 0x007f;
-		
-		for($k=0;$k<8;$k++)			
-			$skey[$k] = $key[2*$k+16] & 0xff | ($key[2*$k+17] & 0xff) << 8;
+		$rkey[9] &= 0x007f;
+				
+		for($k=16;$k<32;$k+=2)			
+			$skey[($k-16)/2] = $key[$k] | ($key[$k+1] << 8);			
 
 		return [$rkey , $skey];	
 		}
 
-	private function poly_m($m,$mpos,$h, $and = array(0x1fff,0x1fff,0x1fff,0x1fff))
+	private function poly_m($m, &$h, $or = 1 << 11, $and = array(0x1fff,0x1fff,0x1fff,0x1fff))
 		{
-		/** Add m-block to accumulator h */
+		/** 
+		Add m-block to accumulator h . from 128 bits to 130 in form of 160 bits 
 		
-		$t0 = $m[$mpos + 0] & 0xff | ($m[$mpos + 1] & 0xff) << 8; $h[0] += ($t0) & 0x1fff;
-		$t1 = $m[$mpos + 2] & 0xff | ($m[$mpos + 3] & 0xff) << 8; $h[1] += (($t0 >> 13) | ($t1 << 3)) & 0x1fff;
-		$t2 = $m[$mpos + 4] & 0xff | ($m[$mpos + 5] & 0xff) << 8; $h[2] += (($t1 >> 10) | ($t2 << 6)) & $and[0];
-		$t3 = $m[$mpos + 6] & 0xff | ($m[$mpos + 7] & 0xff) << 8; $h[3] += (($t2 >> 7) | ($t3 << 9)) & 0x1fff;
-		$t4 = $m[$mpos + 8] & 0xff | ($m[$mpos + 9] & 0xff) << 8; $h[4] += (($t3 >> 4) | ($t4 << 12)) & $and[1];
-		$h[5] += ($t4 >> 1) & $and[2];
-		$t5 = $m[$mpos + 10] & 0xff | ($m[$mpos + 11] & 0xff) << 8; $h[6] += (($t4 >> 14) | ($t5 << 2)) & 0x1fff;
-		$t6 = $m[$mpos + 12] & 0xff | ($m[$mpos + 13] & 0xff) << 8; $h[7] += (($t5 >> 11) | ($t6 << 5)) & $and[3];
-		$t7 = $m[$mpos + 14] & 0xff | ($m[$mpos + 15] & 0xff) << 8; $h[8] += (($t6 >> 8) | ($t7 << 8)) & 0x1fff;
-		return [$h , $t7];	
+		$h & 0x1fff * 10 -> 30 bits cleared
+		
+		(key has special and's)		
+		*/
+		
+		$t = array();
+		for ($k=0;$k<16;$k+=2)
+			$t[$k/2] = $m[$k] | ($m[$k+1] << 8);
+			
+		$h[0] +=   $t[0] & 0x1fff;
+		$h[1] += (($t[0] >> 13) | ($t[1] << 3))  & 0x1fff;
+		$h[2] += (($t[1] >> 10) | ($t[2] << 6))  & $and[0];
+		$h[3] += (($t[2] >> 7)  | ($t[3] << 9))  & 0x1fff;
+		$h[4] += (($t[3] >> 4)  | ($t[4] << 12)) & $and[1];
+		
+		$h[5] +=  ($t[4] >> 1) & $and[2];
+		
+		$h[6] += (($t[4] >> 14) | ($t[5] << 2))  & 0x1fff;
+		$h[7] += (($t[5] >> 11) | ($t[6] << 5))  & $and[3];
+		$h[8] += (($t[6] >> 8)  | ($t[7] << 8))  & 0x1fff;
+		
+		$h[9] += ($t[7] >> 5)   | $or;					
 		}
 
 	private function mul($a, $b)
 		{
 		$c = 0;$d = array();
+		
 		for ($p=0;$p<10;$p++)
 			{
 			$temp = $c; $c = 0;
@@ -314,55 +328,67 @@ class AEAD_CHACHA20_POLY1305
 				}		
 			$d[$p]=$temp;
 			}
-		return [$c , $d];	
+			
+		$c    += ($c << 2) + $d[0];		
+		$d[0]  = $c & 0x1fff;				
+		$d[1] += $c >> 13;
+				
+		return $d;	
 		}
 	
 	private function from_130_to_128($h)
 		{
 		/** h to uint128 = h % 2^128 */
 		
-	        $h[0] = (($h[0]) | ($h[1] << 13)) & 0xffff;
-	        $h[1] = (($h[1] >> 3) | ($h[2] << 10)) & 0xffff;
-	        $h[2] = (($h[2] >> 6) | ($h[3] << 7)) & 0xffff;
-	        $h[3] = (($h[3] >> 9) | ($h[4] << 4)) & 0xffff;
-	        $h[4] = (($h[4] >> 12) | ($h[5] << 1) | ($h[6] << 14)) & 0xffff;
-	        $h[5] = (($h[6] >> 2) | ($h[7] << 11)) & 0xffff;
-	        $h[6] = (($h[7] >> 5) | ($h[8] << 8)) & 0xffff;
-	        $h[7] = (($h[8] >> 8) | ($h[9] << 5)) & 0xffff;		
+	        $h[0] = (($h[0])       | ($h[1] << 13)) & 0xffff;
+	        $h[1] = (($h[1] >> 3)  | ($h[2] << 10)) & 0xffff;
+	        $h[2] = (($h[2] >> 6)  | ($h[3] << 7))  & 0xffff;
+	        $h[3] = (($h[3] >> 9)  | ($h[4] << 4))  & 0xffff;
+	        $h[4] = (($h[4] >> 12) | ($h[5] << 1)   | ($h[6] << 14)) & 0xffff;
+	        $h[5] = (($h[6] >> 2)  | ($h[7] << 11)) & 0xffff;
+	        $h[6] = (($h[7] >> 5)  | ($h[8] << 8))  & 0xffff;
+	        $h[7] = (($h[8] >> 8)  | ($h[9] << 5))  & 0xffff;		
 		
 		return $h;
 		}
 
-	private function fullcarry($h , $g)
+	private function fullcarry($h)
 		{
 		/** Fully carry h --> g */
 		
-	        $c = $h[1] >> 13;
+		$g = array();
+		
+	        $c     = $h[1] >> 13;
 	        $h[1] &= 0x1fff;
+		
 	        for ($i = 2; $i < 10; $i++) 
 			{
 			$h[$i] += $c;
-			$c = $h[$i] >> 13;
+			$c      = $h[$i] >> 13;
 			$h[$i] &= 0x1fff;
 	        	}
 			
-	        $h[0] += ($c * 5);
-	        $c = $h[0] >> 13;
-	        $h[0] &= 0x1fff;
+	        $h[0] += $c * 5;
+		
+	        $c     = $h[0] >> 13;
+	        $h[0] &= 0x1fff;		
 	        $h[1] += $c;
-	        $c = $h[1] >> 13;
+		
+	        $c     = $h[1] >> 13;
 	        $h[1] &= 0x1fff;
 	        $h[2] += $c;
 	
-	        $g[0] = $h[0] + 5;
-	        $c = $g[0] >> 13;
+	        $g[0]  = $h[0] + 5;
+	        $c     = $g[0] >> 13;
 	        $g[0] &= 0x1fff;
+		
 	        for ($i = 1; $i < 10; $i++) 
 			{
-			$g[$i] = $h[$i] + $c;
-			$c = $g[$i] >> 13;
+			$g[$i]  = $h[$i] + $c;
+			$c      = $g[$i] >> 13;
 			$g[$i] &= 0x1fff;
 	        	}
+			
 		return [$h , $g, $c];
 		}
 			
@@ -377,12 +403,7 @@ class AEAD_CHACHA20_POLY1305
 	        $mask = ($c ^ 1) - 1;
 		
 	        for ($i = 0; $i < 10; $i++) 
-			$g[$i] &= $mask;
-			
-	        $mask = ~$mask;
-		
-	        for ($i = 0; $i < 10; $i++) 
-			$h[$i] = ($h[$i] & $mask) | $g[$i];
+			$h[$i] = ($h[$i] & ~$mask) | ($g[$i] & $mask);
 			
 		return $h;
 		}
@@ -391,64 +412,53 @@ class AEAD_CHACHA20_POLY1305
 		{
 		/** Pad if required, adding 1 before padding */
 		
-		$c = strlen($data)%16;$ac = 0;		
+		$c = strlen($data)%16;$ac = 1 << 11;		
 		if ($c>0) 
 			{
 			$data .= chr(1).str_repeat("\0",15-$c);		
-			$ac=1;
+			$ac = 0;
 	        	}			
 		return [$data , $ac];		
 		}
 											
 	public function poly($r_key,$s_key,$data)
 		{			
-	        list ($rkey , $skey) 	= $this->poly1305_key($r_key.$s_key);		
-		list ($m , $ac) 	= $this->pad($data);
+	        list ($rkey , $skey) 	= $this->poly1305_key($r_key.$s_key);	
 		
-		$m	= array_values(unpack("C*",$m));  
-		$bytes	= sizeof($m);	
+		for($k=0;$k<10;$k++) $h[$k]=$d[$k]=0;;
 		
-		for($k=0;$k<10;$k++) $h[$k]=$d[$k]=0;
-	
-		$mpos  = 0;	
-		$hibit = 1 << 11;
-		
-		/** Compute h = r * m */
-		
-	        while ($mpos < sizeof($m)) 
-			{
-			list ($h , $t7) = $this->poly_m($m,$mpos,$h);
-						
-			if ($bytes<17 and $ac) $hibit=0;
-						
-			$h[9] += ($t7 >> 5) | $hibit;
+		if ($data)
+			{	
+			list ($m , $ac) = $this->pad($data);
 			
-			$c = 0;$d = array();
-			list ($c , $d) = $this->mul($h,$rkey);
-	
-			$c = (($c << 2) + $c) | 0;
-			$c = ($c + $d[0]) | 0;
-			$d[0] = $c & 0x1fff;
-			$c >>= 13;
-			$d[1] += $c;
+			$m	= str_split($m,16);  
+			$blocks	= sizeof($m);	
 			
-			$h = $d;
+			/** Compute h = r * m */
 			
-			$mpos += 16;$bytes -= 16;            
+		        for ($k=0;$k<$blocks-1;$k++) 
+				{
+				$this->poly_m(array_values(unpack("C*",$m[$k])),$h);
+				
+				$h = $this->mul($h,$rkey); 			         
+				}
+			
+			$this->poly_m(array_values(unpack("C*",$m[$k])),$h,$ac);
+			
+			$h = $this->mul($h,$rkey); 			
+					        
+			list ($h , $g, $c) = $this->fullcarry($h);
+					
+			$h = $this->from_130_to_128($this->final_modulus($g , $h, $c));
 			}
 		
-		$g = array();		        
-		list ($h , $g, $c) = $this->fullcarry($h , $g);
-				
-		$h = $this->from_130_to_128($this->final_modulus($g , $h, $c));
-	
 		/** Add skey */
 		
 		        $f = $h[0] + $skey[0];
 		        $h[0] = $f & 0xffff;
 		        for ($i = 1; $i < 8; $i++) 
 				{
-				$f = ((($h[$i] + $skey[$i]) | 0) + ($f >> 16)) | 0;
+				$f = ($h[$i] + $skey[$i]) + ($f >> 16);
 				$h[$i] = $f & 0xffff;
 		        	}
 		
@@ -460,7 +470,7 @@ class AEAD_CHACHA20_POLY1305
 			        $mac     .= sprintf("%02x",($h[$k/2] >> 0) & 0xff);
 			        $mac     .= sprintf("%02x",($h[$k/2] >> 8) & 0xff);		
 				}
-		
+	
 		return $mac;
 		}
 		
@@ -486,7 +496,32 @@ class AEAD_CHACHA20_POLY1305
 	echo "Valid 		".strtolower($output)."\n\n";
 	echo "Computed 	".(substr($cipher,0,-32))."\n\n";
 	echo "Computed Tag 	".$computed_tag."\n\n";
-	echo "Decrypted 	".($this->chacha20_aead_decrypt($aad, $key, $iv, '07000000', $cipher))."\n";
+	echo "Decrypted 	".($this->chacha20_aead_decrypt($aad, $key, $iv, '07000000', $cipher))."\n\n";
+	
+	echo "test_AEAD_CHACHA20_POLY1305 https://bugs.chromium.org/p/chromium/issues/attachmentText?aid=1048500\n\n";
+	$testvectors=explode("\n",file_get_contents("https://raw.githubusercontent.com/denobisipsis/ChaCha20-and-Poly1305/master/chacha20_poly1305_tests.txt"));
+
+	for ($k=0;$k<sizeof($testvectors);$k+=7)
+		{
+		$key=trim(explode(":",$testvectors[$k])[1]);
+		$iv=trim(explode(":",$testvectors[$k+1])[1]);
+		$msg=trim(explode(":",$testvectors[$k+2])[1]);
+		$aad=trim(explode(":",$testvectors[$k+3])[1]);
+		$tag=trim(explode(":",$testvectors[$k+5])[1]);
+		
+		$ct=trim(explode(":",$testvectors[$k+4])[1]);
+
+		$cipher 	 = $this->chacha20_aead_encrypt($aad, $key, $iv, '00000000', pack("H*",$msg));	 
+		$computed_tag	 = substr($cipher,-32);
+	  		
+		echo "Key 		".strtolower($key)."\n";
+		echo "Nonce 		".strtolower($iv)."\n";
+		echo "Aad 		".strtolower($aad)."\n";
+		echo "Msg 		".strtolower($msg)."\n";
+		echo "Valid 		".strtolower($ct)."\n";
+		echo "Computed 	".(substr($cipher,0,-32))."\n\n";
+		}	
+	
  	}
      
     public function test_Chacha()
@@ -580,9 +615,7 @@ class AEAD_CHACHA20_POLY1305
 		}
 	}
 }
-
 $x = new AEAD_CHACHA20_POLY1305;	
-
+$x->test_AEAD_CHACHA20_POLY1305();
 $x->test_poly1305();
 $x->test_Chacha();
-$x->test_AEAD_CHACHA20_POLY1305();
