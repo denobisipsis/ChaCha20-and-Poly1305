@@ -465,10 +465,10 @@ class AEAD_CHACHA20_POLY1305
 		/** Final Mac (tag) */
 		
 			$mac = "";
-			for ($k=0;$k<16;$k+=2)
+			for ($k=0;$k<8;$k++)
 				{
-			        $mac     .= sprintf("%02x",($h[$k/2] >> 0) & 0xff);
-			        $mac     .= sprintf("%02x",($h[$k/2] >> 8) & 0xff);		
+			        $mac     .= sprintf("%02x",($h[$k] >> 0) & 0xff);
+			        $mac     .= sprintf("%02x",($h[$k] >> 8) & 0xff);		
 				}
 	
 		return $mac;
