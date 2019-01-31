@@ -436,24 +436,15 @@ class AEAD_CHACHA20_POLY1305
 			$h = $this->from_130_to_128($this->final_modulus_carry($this->mul($h,$rkey)));
 			}
 		
-		/** Add skey */
+		/** Add skey & Final Mac (tag) */
 			
-			$f = 0;
+			$f = 0;$mac = "";
 		        for ($i = 0; $i < 8; $i++) 
 				{
 				$f     = $h[$i] + $skey[$i] + ($f >> 16);
-				$h[$i] = $f & 0xffff;
-		        	}
-		
-		/** Final Mac (tag) */
-		
-			$mac = "";
-			for ($k=0;$k<8;$k++)
-				{
-			        $mac     .= sprintf("%02x",($h[$k] >> 0) & 0xff);
-			        $mac     .= sprintf("%02x",($h[$k] >> 8) & 0xff);		
-				}
-	
+			        $mac  .= sprintf("%02x",(($f & 0xffff) >> 0) & 0xff);
+			        $mac  .= sprintf("%02x",(($f & 0xffff) >> 8) & 0xff);
+		        	}	
 		return $mac;
 		}
 		
