@@ -264,21 +264,18 @@ class AEAD_CHACHA20_POLY1305
 		and r[4], r[8], r[12] are
 		required to have their bottom two bits clear (i.e., to be in {0, 4, 8, . . . , 252})
 		*/
-
-		$key=array_values(unpack("C*",$key));
-		
+	
 		for($k=0;$k<10;$k++) $rkey[$k]=0;		        	        
 		
-		$this->poly_m($key,$rkey,0,array(0x1f03,0x00ff,0x1ffe,0x1f81));
+		$this->poly_m(substr($key,0,16),$rkey,0,array(0x1f03,0x00ff,0x1ffe,0x1f81));
 		
 		$rkey[9] &= 0x007f;
-				
-		for($k=16;$k<32;$k+=2)			
-			$skey[($k-16)/2] = $key[$k] | ($key[$k+1] << 8);			
+		
+		$skey=array_values(unpack("S*",substr($key,16)));			
 
 		return [$rkey , $skey];	
 		}
-
+	
 	private function poly_m($m, &$h, $or = 1 << 11, $and = array(0x1fff,0x1fff,0x1fff,0x1fff))
 		{
 		/** 
@@ -288,26 +285,40 @@ class AEAD_CHACHA20_POLY1305
 		
 		(key has special and's)		
 		*/
-		
-		$t = array();
-		for ($k=0;$k<16;$k+=2)
-			$t[$k/2] = $m[$k] | ($m[$k+1] << 8);
 			
+		$t=array_values(unpack("S*",$m));
+		
 		$h[0] +=   $t[0] & 0x1fff;
 		$h[1] += (($t[0] >> 13) | ($t[1] << 3))  & 0x1fff;
 		$h[2] += (($t[1] >> 10) | ($t[2] << 6))  & $and[0];
 		$h[3] += (($t[2] >> 7)  | ($t[3] << 9))  & 0x1fff;
 		$h[4] += (($t[3] >> 4)  | ($t[4] << 12)) & $and[1];
 		
-		$h[5] +=  ($t[4] >> 1) & $and[2];
+		$h[5] +=  ($t[4] >> 1)  & $and[2];
 		
 		$h[6] += (($t[4] >> 14) | ($t[5] << 2))  & 0x1fff;
 		$h[7] += (($t[5] >> 11) | ($t[6] << 5))  & $and[3];
 		$h[8] += (($t[6] >> 8)  | ($t[7] << 8))  & 0x1fff;
 		
-		$h[9] += ($t[7] >> 5)   | $or;					
+		$h[9] += ($t[7] >> 5)   | $or;				
 		}
 
+	private function from_130_to_128($h)
+		{
+		/** h to uint128 = h % 2^128 */
+		
+	        $h[0] = (($h[0])       | ($h[1] << 13)) & 0xffff;
+	        $h[1] = (($h[1] >> 3)  | ($h[2] << 10)) & 0xffff;
+	        $h[2] = (($h[2] >> 6)  | ($h[3] << 7))  & 0xffff;
+	        $h[3] = (($h[3] >> 9)  | ($h[4] << 4))  & 0xffff;
+	        $h[4] = (($h[4] >> 12) | ($h[5] << 1)   | ($h[6] << 14)) & 0xffff;
+	        $h[5] = (($h[6] >> 2)  | ($h[7] << 11)) & 0xffff;
+	        $h[6] = (($h[7] >> 5)  | ($h[8] << 8))  & 0xffff;
+	        $h[7] = (($h[8] >> 8)  | ($h[9] << 5))  & 0xffff;		
+		
+		return $h;
+		}
+		
 	private function mul($a, $b)
 		{
 		$c = 0;$d = array();
@@ -335,73 +346,43 @@ class AEAD_CHACHA20_POLY1305
 				
 		return $d;	
 		}
-	
-	private function from_130_to_128($h)
-		{
-		/** h to uint128 = h % 2^128 */
-		
-	        $h[0] = (($h[0])       | ($h[1] << 13)) & 0xffff;
-	        $h[1] = (($h[1] >> 3)  | ($h[2] << 10)) & 0xffff;
-	        $h[2] = (($h[2] >> 6)  | ($h[3] << 7))  & 0xffff;
-	        $h[3] = (($h[3] >> 9)  | ($h[4] << 4))  & 0xffff;
-	        $h[4] = (($h[4] >> 12) | ($h[5] << 1)   | ($h[6] << 14)) & 0xffff;
-	        $h[5] = (($h[6] >> 2)  | ($h[7] << 11)) & 0xffff;
-	        $h[6] = (($h[7] >> 5)  | ($h[8] << 8))  & 0xffff;
-	        $h[7] = (($h[8] >> 8)  | ($h[9] << 5))  & 0xffff;		
-		
-		return $h;
-		}
-
-	private function fullcarry($h)
-		{
-		/** Fully carry h --> g */
-		
-		$g = array();
-		
-	        $c     = $h[1] >> 13;
-	        $h[1] &= 0x1fff;
-		
-	        for ($i = 2; $i < 10; $i++) 
-			{
-			$h[$i] += $c;
-			$c      = $h[$i] >> 13;
-			$h[$i] &= 0x1fff;
-	        	}
 			
-	        $h[0] += $c * 5;
-		
-	        $c     = $h[0] >> 13;
-	        $h[0] &= 0x1fff;		
-	        $h[1] += $c;
-		
-	        $c     = $h[1] >> 13;
-	        $h[1] &= 0x1fff;
-	        $h[2] += $c;
-	
-	        $g[0]  = $h[0] + 5;
-	        $c     = $g[0] >> 13;
-	        $g[0] &= 0x1fff;
-		
-	        for ($i = 1; $i < 10; $i++) 
-			{
-			$g[$i]  = $h[$i] + $c;
-			$c      = $g[$i] >> 13;
-			$g[$i] &= 0x1fff;
-	        	}
-			
-		return [$h , $g, $c];
-		}
-			
-	private function final_modulus($g , $h, $c)
+	private function final_modulus_carry($h)
 		{	
 		/** Compare 'h' and 'g' :
 			if h < g then h is the final modulus value
 			Otherwise the final value is h - g	*/
-				
-	        $g[9] -= (1 << 13);
-	
-	        $mask = ($c ^ 1) - 1;
 		
+		$g = array();	
+	
+		$c = 5;$d = 0;
+					
+	        for ($i = 0; $i < 10; $i++) 
+			{
+			$h[$i] += $d;
+			$g[$i]  = $h[$i] + $c;
+			$c      = $g[$i] >> 13;
+			$d      = $h[$i] >> 13;
+			$g[$i] &= 0x1fff;
+			$h[$i] &= 0x1fff;
+	        	}
+
+	        $h[0] += $d * 5;		
+	        $d     = $h[0] >> 13;
+	        $h[0] &= 0x1fff;
+			
+	        $h[1] += $d;		
+	        $d     = $h[1] >> 13;
+	        $h[1] &= 0x1fff;
+		
+	        $h[2] += $d;
+									
+	        $g[9] -= 1 << 13;
+		
+		if ($c==0) return $h;
+		
+		$mask  = ($c ^ 1) - 1;
+
 	        for ($i = 0; $i < 10; $i++) 
 			$h[$i] = ($h[$i] & ~$mask) | ($g[$i] & $mask);
 			
@@ -422,9 +403,16 @@ class AEAD_CHACHA20_POLY1305
 		}
 											
 	public function poly($r_key,$s_key,$data)
-		{			
+		{
+		/** Prepare rkey & skey 
+		Certain bits of r are required to be 0: 
+		r[3], r[7], r[11], r[15] are required to 
+		have their top four bits clear (i.e., to be in {0, 1, . . . , 15})
+		and r[4], r[8], r[12] are
+		required to have their bottom two bits clear (i.e., to be in {0, 4, 8, . . . , 252})
+		*/				
 	        list ($rkey , $skey) 	= $this->poly1305_key($r_key.$s_key);	
-		
+				
 		for($k=0;$k<10;$k++) $h[$k]=$d[$k]=0;;
 		
 		if ($data)
@@ -438,27 +426,26 @@ class AEAD_CHACHA20_POLY1305
 			
 		        for ($k=0;$k<$blocks-1;$k++) 
 				{
-				$this->poly_m(array_values(unpack("C*",$m[$k])),$h);
+				$this->poly_m($m[$k],$h);
 				
-				$h = $this->mul($h,$rkey); 			         
+				$h = $this->mul($h,$rkey); 
 				}
 			
-			$this->poly_m(array_values(unpack("C*",$m[$k])),$h,$ac);
+			$this->poly_m($m[$k],$h,$ac);
 			
 			$h = $this->mul($h,$rkey); 			
 					        
-			list ($h , $g, $c) = $this->fullcarry($h);
+			$h = $this->final_modulus_carry($h);
 					
-			$h = $this->from_130_to_128($this->final_modulus($g , $h, $c));
+			$h = $this->from_130_to_128($h);
 			}
 		
 		/** Add skey */
-		
-		        $f = $h[0] + $skey[0];
-		        $h[0] = $f & 0xffff;
-		        for ($i = 1; $i < 8; $i++) 
+			
+			$f = 0;
+		        for ($i = 0; $i < 8; $i++) 
 				{
-				$f = ($h[$i] + $skey[$i]) + ($f >> 16);
+				$f     = $h[$i] + $skey[$i] + ($f >> 16);
 				$h[$i] = $f & 0xffff;
 		        	}
 		
@@ -513,15 +500,18 @@ class AEAD_CHACHA20_POLY1305
 
 		$cipher 	 = $this->chacha20_aead_encrypt($aad, $key, $iv, '00000000', pack("H*",$msg));	 
 		$computed_tag	 = substr($cipher,-32);
+		$computed 	 = substr($cipher,0,-32);
 	  		
 		echo "Key 		".strtolower($key)."\n";
 		echo "Nonce 		".strtolower($iv)."\n";
 		echo "Aad 		".strtolower($aad)."\n";
 		echo "Msg 		".strtolower($msg)."\n";
 		echo "Valid 		".strtolower($ct)."\n";
-		echo "Computed 	".(substr($cipher,0,-32))."\n\n";
+		echo "Computed 	".$computed."\n\n";
+		
+		if (strtolower($ct)!=$computed) die("fail");
 		}	
-	
+	echo "ok";
  	}
      
     public function test_Chacha()
@@ -538,13 +528,18 @@ class AEAD_CHACHA20_POLY1305
 		
 		$cipher=substr($testvectors[$k+4],0,-1);
 		
+		$computed = bin2hex($this->chacha20_encrypt($key, 0, $nonce, pack("H*",$msg)));
+		
 		echo "Key 		".strtolower($key)."\n";
 		echo "Nonce 		".strtolower($nonce)."\n";
 		echo "Aad 		".strtolower($aad)."\n";
 		echo "Msg 		".strtolower($msg)."\n";
 		echo "Valid 		".strtolower($cipher)."\n";
-		echo "Computed 	".bin2hex($this->chacha20_encrypt($key, 0, $nonce, pack("H*",$msg)))."\n\n";
-		}	    
+		echo "Computed 	".$computed."\n\n";
+		
+		if (strtolower($cipher)!=$computed) die("fail");
+		}
+	echo "ok";	    
 	}
 	
     public function test_poly1305()
@@ -560,10 +555,14 @@ class AEAD_CHACHA20_POLY1305
 		$msg=substr($testvectors[$k+1],0,-1);
 		$tag=substr($testvectors[$k+2],0,-1);
 		
+		$computed = $this->poly(pack("H*",$key) ,'',pack("H*",$msg));
+		
 		echo "Key 		".strtolower($key)."\n";
 		echo "Msg 		".strtolower($msg)."\n";
 		echo "Valid 		".strtolower($tag)."\n";
-		echo "Computed 	".($this->poly(pack("H*",$key) ,'',pack("H*",$msg)))."\n\n";
+		echo "Computed 	".$computed."\n\n";
+		
+		if (strtolower($tag)!=$computed) die("fail");
 		}
 		
 	/** s_key is aes-128 de nonce */	  
@@ -605,14 +604,19 @@ class AEAD_CHACHA20_POLY1305
 		$valid = $vector[4];
 				
 		$s = openssl_encrypt(pack("H*",$nonce), 'aes-128-ecb', pack("H*",$k_aes), 1|OPENSSL_ZERO_PADDING);
+		
+		$computed = $this->poly(pack("H*",$r_key) , $s ,pack("H*",$msg));
 	
 		echo "RKey 		".strtolower($r_key)."\n";
 		echo "Nonce 		".strtolower($nonce)."\n";
 		echo "KAes 		".strtolower($k_aes)."\n";
 		echo "Msg 		".strtolower($msg)."\n\n";
 		echo "Valid 		$valid\n";
-		echo "Computed 	".($this->poly(pack("H*",$r_key) , $s ,pack("H*",$msg)))."\n\n\n";
+		echo "Computed 	".$computed."\n\n\n";
+		
+		if ($valid!=$computed) die("fail");
 		}
+	echo "ok";
 	}
 }
 $x = new AEAD_CHACHA20_POLY1305;	
