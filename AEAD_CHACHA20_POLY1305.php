@@ -413,7 +413,7 @@ class AEAD_CHACHA20_POLY1305
 		*/				
 	        list ($rkey , $skey) 	= $this->poly1305_key($r_key.$s_key);	
 				
-		for($k=0;$k<10;$k++) $h[$k]=$d[$k]=0;;
+		for($k=0;$k<10;$k++) $h[$k]=0;;
 		
 		if ($data)
 			{	
@@ -432,12 +432,8 @@ class AEAD_CHACHA20_POLY1305
 				}
 			
 			$this->poly_m($m[$k],$h,$ac);
-			
-			$h = $this->mul($h,$rkey); 			
-					        
-			$h = $this->final_modulus_carry($h);
 					
-			$h = $this->from_130_to_128($h);
+			$h = $this->from_130_to_128($this->final_modulus_carry($this->mul($h,$rkey)));
 			}
 		
 		/** Add skey */
